@@ -1,11 +1,20 @@
 [profile.default]
 src = "src"
 out = "out"
-libs = ["../node_modules"]
-remappings = ["@openzeppelin/contracts/=../node_modules/@openzeppelin/contracts/"]
+libs = ["lib"]
+remappings = [
+  "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+  "forge-std/=lib/forge-std/src/",
+]
 solc_version = "0.8.30"
 evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
+dynamic_test_linking = false
 network = "monad"
 hardfork = "monad:MonadNine"
+
+[lint]
+# Foundry 1.8 Solar fails to resolve relative imports during the post-build pass.
+# Run `forge lint` separately until that upstream path bug is fixed.
+lint_on_build = false

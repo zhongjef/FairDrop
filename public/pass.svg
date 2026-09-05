@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200">
+  <rect width="1200" height="1200" rx="96" fill="#15131a"/>
+  <circle cx="600" cy="600" r="430" fill="#836ef9"/>
+  <circle cx="600" cy="600" r="300" fill="#15131a"/>
+  <path d="M420 600h360M600 420v360" stroke="#fff" stroke-width="72" stroke-linecap="round"/>
+  <text x="600" y="1080" fill="#fff" font-family="Arial, sans-serif" font-size="88" font-weight="700" text-anchor="middle">CODROP PASS</text>
+</svg>

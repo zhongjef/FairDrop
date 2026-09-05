@@ -10,7 +10,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "contract:sync": "node scripts/sync-contract.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "5.102.8",
@@ -20,7 +21,6 @@
     "wagmi": "3.7.7"
   },
   "devDependencies": {
-    "@openzeppelin/contracts": "5.6.1",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",
     "@vitejs/plugin-react": "5.2.0",

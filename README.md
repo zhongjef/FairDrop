@@ -1,9 +1,10 @@
 # CoDrop 一起买
 
-FairDrop 仓库中的 CoDrop POC。当前仅实现 T01 工程骨架：React 页面和 Foundry 配置。尚无购买、NFT、钱包连接、提款或部署功能。
+FairDrop 仓库中的 CoDrop POC：一个钱包为多个地址购买 ERC-721 Pass，主办方和平台分别提取 99% / 1% 收入。当前部署在 Monad Testnet。
 
 - [产品规格](docs/product-spec.md)
 - [开发任务与验收](docs/implementation-tasks.md)
+- [测试网验收记录](docs/acceptance.md)
 
 ## 工具与依赖
 
@@ -11,7 +12,7 @@ FairDrop 仓库中的 CoDrop POC。当前仅实现 T01 工程骨架：React 页�
 - pnpm `11.21.0`：见 `package.json` 的 `packageManager`。
 - 官方 Foundry `v1.8.0`：见 `contracts/.foundry-version`，该文件用于记录版本，安装时需显式指定。
 - Solidity `0.8.30`，EVM 编译目标 `cancun`，优化器开启、200 runs。
-- OpenZeppelin Contracts `5.6.1`：通过 pnpm 安装，Foundry remapping 指向根目录依赖。
+- OpenZeppelin Contracts `5.6.1` 与 forge-std `1.16.2`：固定在 `contracts/lib`。
 - 前端依赖使用精确版本，完整依赖树由 `pnpm-lock.yaml` 固定。
 
 ## 安装和运行
@@ -26,7 +27,7 @@ cp .env.example .env.local
 pnpm dev
 ```
 
-若已安装对应版本的 Node 和 pnpm，可直接执行 `pnpm install --frozen-lockfile`。前端目前只是静态占位页面，不连接钱包或调用 RPC。
+若已安装对应版本的 Node 和 pnpm，可直接执行 `pnpm install --frozen-lockfile`。复制 `.env.example` 后默认连接当前测试网合约。
 
 按照 [Monad 官方 Foundry 指南](https://docs.monad.xyz/tooling-and-infra/toolkits/foundry) 安装官方 `foundryup`，随后执行：
 
@@ -38,7 +39,7 @@ forge --version
 
 确保 Foundry 的 bin 目录在 PATH 中。不要使用旧版本忽略未知配置后返回的成功结果来验收 Monad 配置。
 
-## T01 检查
+## 检查
 
 在仓库根目录运行：
 
@@ -46,23 +47,25 @@ forge --version
 pnpm typecheck
 pnpm build
 forge build --root contracts
-forge config --root contracts
+forge test --root contracts
 ```
 
-前端输出目录为 `dist/`。Foundry 配置必须包含 `network = "monad"` 和 `hardfork = "monad:MonadNine"`；编译器及优化设置也应与上文一致。
-
-`contracts/src/Dependencies.sol` 只导入 ERC721 和 ReentrancyGuard，用于确认编译器与依赖解析可用，不包含业务合约。T01 没有业务测试，编译成功不代表资金、库存或 NFT 功能已经验收。
+前端输出目录为 `dist/`。Foundry 的 Solar lint 在从仓库根目录解析 vendored relative imports 时有已知路径问题；需要 lint 时进入 `contracts/` 后执行 `forge lint`。
 
 ## 配置与密钥
 
-`.env.example` 仅声明公开的 `VITE_MONAD_RPC_URL` 和未来部署后的 `VITE_CONTRACT_ADDRESS`。当前合约地址留空，这些变量将在后续任务中接入。
+`.env.example` 声明公开的 Monad RPC 和当前测试网合约地址。
 
 `VITE_*` 会暴露给浏览器，不能放私钥、助记词或私密 API 凭据。签名使用本地加密 keystore；`.env.local`、构建产物和 Foundry 输出不进入 Git。
 
-当前目标是 Monad Testnet `10143`。hardfork 依据任务文档固定为 MonadNine，实际部署前必须复核 [测试网配置](https://docs.monad.xyz/developer-essentials/testnet)。部署脚本、静态资源发布和测试网验收属于后续任务，本阶段没有部署命令。
+当前目标是 Monad Testnet `10143`。浏览器钱包负责签名，私钥不会进入前端或仓库。
 
-## 本次验证记录
+## 当前测试网部署
 
-2026-09-05：在项目目录和独立临时目录（Node 22.22.3）完成 `pnpm install --frozen-lockfile`、类型检查、Vite 构建和 Forge 依赖编译；临时目录复用本机 pnpm 缓存并通过在线策略校验，未验证空缓存下载。开发服务器 HTML 与 TSX 转换检查通过。
+- 合约：[`0xB4Fdc79F2540DA2541FA74F4361B916b6B98c374`](https://testnet.monadvision.com/address/0xB4Fdc79F2540DA2541FA74F4361B916b6B98c374)
+- 单价：`0.01 MON`
+- 测试库存：`1000` 张（产品规格默认值仍为 5）
+- 源码：MonadVision 与 Monadscan 已验证
+- 本地合约测试：`9 passed, 0 failed`
 
-Foundry 1.8.0 编译成功，但附带 Solar 无法 lint 的提示；本阶段只验收依赖编译与配置，不宣称 lint 或业务测试通过。
+GitHub Pages 发布由 `.github/workflows/pages.yml` 完成，生产构建固定使用上述公开合约地址。
