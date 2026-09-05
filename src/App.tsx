@@ -303,17 +303,23 @@ export function App() {
       <main>
         <section className="hero">
           <div className="hero-copy">
-            <p className="eyebrow">CO-BUY PASS · TESTNET DEMO</p>
-            <h1>一次付款，<br />帮朋友一起买好。</h1>
-            <p className="lede">名额够就全部成功，不够就整单不成交。每个地址收到一枚可转让 ERC-721 Pass。</p>
+            <p className="eyebrow">MONAD RELAY · MOCK GAME</p>
+            <h1>组好一队，<br />链上开局。</h1>
+            <p className="lede">模拟小游戏「Monad Relay」需要 1–5 人组队入场。队长一次付款，把 Pass 直接发到每位队友的钱包。</p>
             <div className="hero-tags" aria-label="产品特点">
-              <span>一笔交易</span><span>整单原子成交</span><span>链上可验证</span>
+              <span>最多 5 人</span><span>整队原子成交</span><span>链上可验证</span>
             </div>
           </div>
           <div className="pass-visual">
             <img src="./codrop-editorial-hero.png" alt="蓝橙双色印刷的 CoDrop 一起买海报" />
             <span>ISSUE 001 · ONCHAIN</span>
           </div>
+        </section>
+
+        <section className="game-brief" aria-label="Monad Relay 游戏说明">
+          <div><span>本轮任务</span><strong>组队夺回能量核心</strong></div>
+          <div><span>测试入场价</span><strong>{typeof price.data === 'bigint' ? formatEther(price.data) : '0.01'} MON / 人</strong></div>
+          <div><span>平台服务费</span><strong>成交额的 1%</strong></div>
         </section>
 
         {wrongChain && (
@@ -353,7 +359,7 @@ export function App() {
         ) : (
           <>
             <section className="metrics" aria-label="链上数据">
-              <div><span>每张价格</span><strong>{typeof price.data === 'bigint' ? `${formatEther(price.data)} MON` : '—'}</strong></div>
+              <div><span>每人入场价</span><strong>{typeof price.data === 'bigint' ? `${formatEther(price.data)} MON` : '—'}</strong></div>
               <div><span>剩余名额</span><strong>{typeof remaining.data === 'bigint' ? `${remaining.data} / ${String(maxSupply.data ?? '—')}` : '—'}</strong></div>
               <div><span>已售 Pass</span><strong>{String(sold.data ?? '—')}</strong></div>
               <div><span>我的持有</span><strong>{String(walletPasses.data ?? '—')}</strong></div>
@@ -366,7 +372,7 @@ export function App() {
             <section className="grid">
               <article className="card purchase-card">
                 <div className="section-heading">
-                  <div><p className="step">一起买</p><h2>这次买给谁？</h2></div>
+                  <div><p className="step">组队入场</p><h2>把队友加入名单</h2></div>
                   <span className="number-badge">01</span>
                 </div>
                 {pendingAction === 'buy' && pendingHash && (
