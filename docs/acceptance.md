@@ -13,8 +13,9 @@
 | Solidity 0.8.30 语法编译 | 通过（非 Foundry 验收） | `npx solc@0.8.30` 编译合约、测试辅助合约和部署脚本；测试文件有 `selfdestruct` 弃用及测试合约代码体积提示 |
 | Foundry 编译/测试 | 通过 | 官方 Foundry `forge 1.8.1`；`forge build --root contracts` 成功；`forge test --root contracts`：21 passed、0 failed |
 | Monad Testnet RPC | 通过 | `eth_chainId` 返回 `0x279f`（10143） |
+| NFT 元数据与图片 | 通过 | `metadata.json` 与 `pass.svg` 已发布到 GitHub Raw HTTPS 地址并返回 200 |
 | ABI 导出 | 通过 | `pnpm abi:export` 已成功执行，使用 `contracts/out/CoDropPass.sol/CoDropPass.json` 重新生成 `src/abi.ts` |
-| 测试网部署 | 未执行 | 尚未提供测试网签名钱包、合约地址和公开元数据托管地址 |
+| 测试网部署 | 未执行 | 已有部署钱包和公开元数据地址；仍缺部署私钥与合约广播结果 |
 
 ## P01–P05
 
