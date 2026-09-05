@@ -1,5 +1,5 @@
 {
   "name": "CoDrop Pass - Neon Commons: First Light",
   "description": "A fixed-supply CoDrop ERC-721 Pass for the Neon Commons First Light session.",
-  "image": "/pass.svg"
+  "image": "https://raw.githubusercontent.com/zhongjef/FairDrop/codex/codrop-spec-completion/public/pass.svg"
 }
