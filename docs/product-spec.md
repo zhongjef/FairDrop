@@ -3,6 +3,8 @@
 版本：POC v0.1  
 目标：在 Monad 测试网上跑通 **一个人付款 → 多个地址收到 Pass → 主办方与平台分别提款**。
 
+执行拆解：[开发任务与验收条件](./implementation-tasks.md)。技术选型与 Monad 配置于 2026-09-05 核对；任务未勾选前均为待实现。
+
 本规格替代原 PRD v1.0 的功能范围与验收要求。原有双人签名、多志愿、抽签、退款等功能不进入本次交付。以下均为待实现要求，不表示已经完成。
 
 ## 1. 产品定位
@@ -148,15 +150,17 @@ CoDrop 是一个支持代买的限量 Pass 发售页面。
 |---|---|---|
 | 前端 | React + TypeScript + Vite | 单页应用、表单和交易结果 |
 | 样式 | 普通 CSS | 完成基本布局和状态展示 |
-| 钱包与链交互 | wagmi + viem + TanStack Query | 钱包连接、合约读取、交易发送和状态刷新 |
+| 钱包与链交互 | wagmi + viem 2.x（>= 2.40.0）+ TanStack Query | 使用 injected 浏览器钱包连接、合约读取、交易发送和状态刷新 |
 | 智能合约 | Solidity + OpenZeppelin Contracts | ERC-721、购买逻辑、佣金记账、提款保护 |
-| 合约测试与部署 | Foundry | 本地测试、部署脚本和合约验证 |
+| 合约测试与部署 | 官方 Foundry >= 1.8.0 | 启用 Monad 执行环境，本地测试、部署脚本和合约验证 |
 | 网络 | Monad Testnet | 真实测试交易 |
 | 页面托管 | 任意静态托管服务 | 发布构建后的前端及静态图片、元数据 |
 
 wagmi 基于 viem，并使用 TanStack Query 管理相关缓存与响应式状态；OpenZeppelin 提供 ERC-721 等标准实现。[wagmi 官方说明](https://wagmi.sh/)、[OpenZeppelin 文档](https://docs.openzeppelin.com/contracts)
 
-Monad 官方开发者入口列出的测试网 Chain ID 为 `10143`；部署时核对 RPC 与浏览器地址，并统一写入前端配置。[Monad 官方开发者入口](https://developers.monad.xyz/)
+Monad 测试网 Chain ID 为 `10143`，默认 RPC 为 `https://testnet-rpc.monad.xyz`，浏览器使用 `https://testnet.monadvision.com`。部署前再次核对网络及 hardfork，并统一写入前端配置。[Monad 测试网配置](https://docs.monad.xyz/developer-essentials/testnet)
+
+Foundry 配置 `network = "monad"`；本地 hardfork 必须与目标测试网对齐，不能直接依赖工具的最新默认值。[Monad Foundry 指南](https://docs.monad.xyz/tooling-and-infra/toolkits/foundry)
 
 **不需要 Next.js 服务端、数据库、Redis、索引器、API 服务或定时任务。** 如果实际项目已经有能运行的 Next.js 前端，则继续沿用，不为本规格迁移框架。
 
@@ -212,6 +216,8 @@ Monad 官方开发者入口列出的测试网 Chain ID 为 `10143`；部署时�
 
 取得交易哈希只表示已提交，不能提前显示购买成功或提款到账。
 
+本项目选择在成功回执所属区块达到 `finalized` 后显示成功；通过 RPC 查询确认，不用固定延时推算。查询中断时保留交易链接并显示“暂时无法确认”。[Monad 交易时序说明](https://docs.monad.xyz/developer-essentials/summary)
+
 RPC 查询失败时显示“暂时无法确认”，不能把查询失败显示成库存为零、未购买或余额为零。
 
 刷新后重新读取链上库存、当前钱包 Pass 数量与待提款余额。不要求恢复完整历史订单列表；订单明细可以通过交易链接核查。
@@ -221,7 +227,7 @@ RPC 查询失败时显示“暂时无法确认”，不能把查询失败显示�
 | 编号 | 操作 | 通过条件 |
 |---|---|---|
 | P01 多人购买 | 初始库存 5，付款人替三个不同地址购买 | 只需付款钱包操作；三个地址各收到一枚 Pass；库存剩 2 |
-| P02 佣金闭环 | 完成上述 3 MON 订单后，双方提款 | 主办方实际收到 2.97 MON，平台实际收到 0.03 MON；待提款归零 |
+| P02 佣金闭环 | 完成上述 3 MON 订单后，双方提款 | 合约向主办方转账 2.97 MON，向平台转账 0.03 MON；待提款归零；钱包净增额需扣除各自支付的 Gas |
 | P03 整单失败 | 剩余库存 2 时购买 3 张 | 交易失败，无新增 NFT、无库存变化、无新增收入 |
 | P04 基础保护 | 检查空名单、零地址、重复地址、超人数、错误金额、越权及重复提款 | 被底层规则拒绝；发证或提款失败不留下部分状态 |
 | P05 可验证性 | 刷新页面并核对交易 | 链上库存、NFT 所有权与余额一致；购买和提款有测试网证据 |
