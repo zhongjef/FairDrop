@@ -161,6 +161,7 @@ wagmi 基于 viem，并使用 TanStack Query 管理相关缓存与响应式状�
 Monad 测试网 Chain ID 为 `10143`，默认 RPC 为 `https://testnet-rpc.monad.xyz`，浏览器使用 `https://testnet.monadvision.com`。部署前再次核对网络及 hardfork，并统一写入前端配置。[Monad 测试网配置](https://docs.monad.xyz/developer-essentials/testnet)
 
 Foundry 配置 `network = "monad"`；本地 hardfork 必须与目标测试网对齐，不能直接依赖工具的最新默认值。[Monad Foundry 指南](https://docs.monad.xyz/tooling-and-infra/toolkits/foundry)
+支付页面参考 https://hosted-checkout.demos-crossmint.com/ 
 
 **不需要 Next.js 服务端、数据库、Redis、索引器、API 服务或定时任务。** 如果实际项目已经有能运行的 Next.js 前端，则继续沿用，不为本规格迁移框架。
 
