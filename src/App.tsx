@@ -1,16 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  useBlock,
-  useConnect,
-  useConnection,
-  useConnectors,
-  useDeployContract,
-  useDisconnect,
-  usePublicClient,
-  useReadContract,
-  useSwitchChain,
-  useWaitForTransactionReceipt,
-  useWriteContract,
+  useBlock, useConnect, useConnection, useConnectors, useDeployContract, useDisconnect,
+  usePublicClient, useReadContract, useSwitchChain, useWaitForTransactionReceipt, useWriteContract,
 } from 'wagmi'
 import { type Abi, type Address, type Hex, BaseError, encodeDeployData, formatEther, isAddress, parseEther, zeroAddress } from 'viem'
 import { monadTestnet } from 'wagmi/chains'
@@ -20,432 +11,58 @@ const abi = artifact.abi as Abi
 const bytecode = artifact.bytecode as Hex
 const explorer = 'https://testnet.monadvision.com'
 const storageKey = 'codrop-contract-address'
-const demoContract = '0xb4fdc79f2540da2541fa74f4361b916b6b98c374' as Address
+const orderStoragePrefix = 'fairdrop-orders:'
 
-function storedContract(): Address | undefined {
-  const candidate = import.meta.env.VITE_CONTRACT_ADDRESS || localStorage.getItem(storageKey) || demoContract
-  if (!candidate) return undefined
-  try {
-    return parseAddress(candidate)
-  } catch {
-    return undefined
-  }
-}
+type View = 'market' | 'orders' | 'studio'
+type OrderStatus = '待分配' | '已获得 Pass' | '可退款'
+type Activity = { id: string; title: string; project: string; type: string; date: string; price: string; sold: number; capacity: number; accent: string; tags: string[]; description: string; hasBackup: boolean }
+type DemoOrder = { id: string; title: string; date: string; amount: string; people: number; status: OrderStatus; note: string }
 
-function parseAddress(value: string): Address {
-  const address = value.trim()
-  if (!isAddress(address, { strict: false })) throw new Error('钱包地址格式有误')
-  return address.toLowerCase() as Address
-}
+const activities: Activity[] = [
+  { id: 'monad-duo', title: 'Monad Duo Playtest', project: 'Kintsugi Arcade', type: '双人合作体验', date: '09.18 · 19:30 CST', price: '10 MON / 张', sold: 164, capacity: 200, accent: 'blue', tags: ['A / B 场次', '整组 2 人', 'Pass 直发'], description: '和朋友一起进入首轮 Monad 双人合作体验。提交同行地址与场次偏好，整组条件满足才成交。', hasBackup: true },
+  { id: 'night-market', title: 'Night Market Access', project: 'Lumen District', type: '社区夜市通行证', date: '09.25 · 18:00 CST', price: '4 MON / 张', sold: 72, capacity: 120, accent: 'orange', tags: ['A / B 场次', '可转让', '现场核验'], description: '一张 Pass，进入 Lumen District 的创作者夜市和限定展台。', hasBackup: true },
+  { id: 'builders-lounge', title: 'Builders Lounge #03', project: 'Monad Builders', type: '开发者社区', date: '10.02 · 14:00 CST', price: '2 MON / 张', sold: 38, capacity: 80, accent: 'green', tags: ['A / B 场次', '白名单', '社区席位'], description: '面向构建者的半日工作坊，包含圆桌、配对协作和社区席位。', hasBackup: true },
+]
 
-function short(address?: string) {
-  return address ? `${address.slice(0, 6)}…${address.slice(-4)}` : '—'
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof BaseError ? error.shortMessage : error instanceof Error ? error.message : '操作失败'
-}
-
-function parseRecipients(input: string): Address[] {
-  const recipients = input
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map(parseAddress)
-
-  if (recipients.length === 0 || recipients.length > 5) throw new Error('请输入 1–5 个接收地址')
-  if (recipients.some((address) => address === zeroAddress)) throw new Error('接收地址不能是零地址')
-  if (new Set(recipients.map((address) => address.toLowerCase())).size !== recipients.length) {
-    throw new Error('同一订单不能包含重复地址')
-  }
-  return recipients
-}
+function storedContract(): Address | undefined { const candidate = localStorage.getItem(storageKey) || import.meta.env.VITE_CONTRACT_ADDRESS; if (!candidate) return undefined; try { return parseAddress(candidate) } catch { return undefined } }
+function parseAddress(value: string): Address { const address = value.trim(); if (!isAddress(address, { strict: false })) throw new Error('钱包地址格式有误'); return address.toLowerCase() as Address }
+function short(address?: string) { return address ? `${address.slice(0, 6)}…${address.slice(-4)}` : '—' }
+function errorMessage(error: unknown) { return error instanceof BaseError ? error.shortMessage : error instanceof Error ? error.message : '操作失败' }
+function parseRecipients(input: string): Address[] { const recipients = input.split(/[\s,，]+/).map((line) => line.trim()).filter(Boolean).map(parseAddress); if (recipients.length === 0 || recipients.length > 5) throw new Error('请输入 1–5 个接收地址，可换行或逗号分隔'); if (recipients.some((address) => address === zeroAddress)) throw new Error('接收地址不能是零地址'); if (new Set(recipients.map((address) => address.toLowerCase())).size !== recipients.length) throw new Error('同一订单不能包含重复地址'); return recipients }
 
 export function App() {
-  const connection = useConnection()
-  const connectors = useConnectors()
-  const connect = useConnect()
-  const disconnect = useDisconnect()
-  const switchChain = useSwitchChain()
-  const publicClient = usePublicClient({ chainId: monadTestnet.id })
-  const deploy = useDeployContract()
-  const write = useWriteContract()
+  const connection = useConnection(); const connectors = useConnectors(); const connect = useConnect(); const disconnect = useDisconnect(); const switchChain = useSwitchChain(); const publicClient = usePublicClient({ chainId: monadTestnet.id }); const deploy = useDeployContract(); const write = useWriteContract()
+  const [contractAddress, setContractAddress] = useState<Address | undefined>(storedContract); const [contractInput, setContractInput] = useState(() => storedContract() || ''); const [organizerInput, setOrganizerInput] = useState(''); const [platformInput, setPlatformInput] = useState(''); const [metadataInput, setMetadataInput] = useState('https://zhongjef.github.io/FairDrop/pass.json'); const [recipientsInput, setRecipientsInput] = useState(''); const [submittedRecipients, setSubmittedRecipients] = useState<Address[]>([])
+  const [pendingHash, setPendingHash] = useState<Hex>(); const [pendingAction, setPendingAction] = useState<'deploy' | 'buy' | 'organizer' | 'platform'>(); const [localError, setLocalError] = useState(''); const handledHash = useRef<Hex | undefined>(undefined); const actionLock = useRef(false); const walletConnectLock = useRef(false); const fallbackAttempted = useRef(false); const [preparing, setPreparing] = useState(false)
+  const [roleMode, setRoleMode] = useState<'user' | 'platform'>('user'); const [view, setView] = useState<View>('market'); const [selectedActivity, setSelectedActivity] = useState(activities[0]); const [orders, setOrders] = useState<DemoOrder[]>([]); const [focusedOrderId, setFocusedOrderId] = useState<string>(); const [orderFilter, setOrderFilter] = useState<'全部' | OrderStatus>('全部'); const [signupMode, setSignupMode] = useState<'条件报名' | '直接购买'>('条件报名'); const [signupStep, setSignupStep] = useState<1 | 2>(1); const [acceptBackup, setAcceptBackup] = useState(true); const [contractBalance, setContractBalance] = useState<bigint>(); const [contractReadState, setContractReadState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const enabled = Boolean(contractAddress); const contract = { address: contractAddress, abi, chainId: monadTestnet.id } as const
+  const readQuery = { enabled, retry: 3, refetchOnWindowFocus: true } as const; const price = useReadContract({ ...contract, functionName: 'price', query: readQuery }); const maxSupply = useReadContract({ ...contract, functionName: 'maxSupply', query: readQuery }); const sold = useReadContract({ ...contract, functionName: 'sold', query: readQuery }); const remaining = useReadContract({ ...contract, functionName: 'remainingSupply', query: readQuery }); const organizer = useReadContract({ ...contract, functionName: 'organizer', query: readQuery }); const platform = useReadContract({ ...contract, functionName: 'platform', query: readQuery }); const organizerPending = useReadContract({ ...contract, functionName: 'organizerPending', query: readQuery }); const platformPending = useReadContract({ ...contract, functionName: 'platformPending', query: readQuery }); const walletPasses = useReadContract({ ...contract, functionName: 'balanceOf', args: [connection.address || zeroAddress], query: { ...readQuery, enabled: enabled && Boolean(connection.address) } })
+  const receipt = useWaitForTransactionReceipt({ hash: pendingHash, chainId: monadTestnet.id, query: { enabled: Boolean(pendingHash) } }); const finalizedBlock = useBlock({ chainId: monadTestnet.id, blockTag: 'finalized', watch: true, query: { enabled: Boolean(receipt.data) } }); const finalized = Boolean(receipt.data?.status === 'success' && receipt.data.transactionHash === pendingHash && finalizedBlock.data?.number !== undefined && finalizedBlock.data.number >= receipt.data.blockNumber)
+  const parsedPreview = useMemo(() => { try { return parseRecipients(recipientsInput) } catch { return [] } }, [recipientsInput]); const total = typeof price.data === 'bigint' ? price.data * BigInt(parsedPreview.length) : 0n; const wrongChain = connection.status === 'connected' && connection.chainId !== monadTestnet.id; const busy = preparing || deploy.isPending || write.isPending || Boolean(pendingHash && !finalized && !receipt.isError); const soldOut = remaining.data === 0n; const canBuy = connection.status === 'connected' && !wrongChain && !busy && parsedPreview.length > 0 && (typeof remaining.data !== 'bigint' || BigInt(parsedPreview.length) <= remaining.data); const readError = [price, maxSupply, sold, remaining, organizer, platform, organizerPending, platformPending].find((query) => query.error)?.error
+  const demoMode = !contractAddress || connection.status !== 'connected' || Boolean(readError); const livePriceLabel = typeof price.data === 'bigint' ? `${formatEther(price.data)} MON / 张` : undefined; const visibleOrders = orderFilter === '全部' ? orders : orders.filter((order) => order.status === orderFilter); const demoProgress = Math.round((selectedActivity.sold / selectedActivity.capacity) * 100); const connectedAccount = connection.address?.toLowerCase(); const organizerAddress = typeof organizer.data === 'string' ? organizer.data.toLowerCase() : undefined; const platformAddress = typeof platform.data === 'string' ? platform.data.toLowerCase() : undefined; const isOrganizer = Boolean(connectedAccount && organizerAddress && connectedAccount === organizerAddress); const isPlatform = Boolean(connectedAccount && platformAddress && connectedAccount === platformAddress); const canAccessStudio = Boolean(contractAddress && connection.status === 'connected' && !readError && (isOrganizer || isPlatform)); const settledAmount = typeof organizerPending.data === 'bigint' && typeof platformPending.data === 'bigint' ? organizerPending.data + platformPending.data : undefined; const realSoldPercent = typeof sold.data === 'bigint' && typeof maxSupply.data === 'bigint' && maxSupply.data > 0n ? Number(sold.data * 100n / maxSupply.data) : undefined
+  async function refresh() { await Promise.all([price.refetch(), maxSupply.refetch(), sold.refetch(), remaining.refetch(), organizer.refetch(), platform.refetch(), organizerPending.refetch(), platformPending.refetch(), walletPasses.refetch()]); if (publicClient && contractAddress) setContractBalance(await publicClient.getBalance({ address: contractAddress })) }
+  useEffect(() => { if (contractAddress && publicClient) void refresh() }, [contractAddress, publicClient])
+  useEffect(() => { const configured = import.meta.env.VITE_CONTRACT_ADDRESS; if (!readError || fallbackAttempted.current || !configured || !contractAddress || contractAddress.toLowerCase() === configured.toLowerCase()) return; fallbackAttempted.current = true; const fallback = parseAddress(configured); localStorage.setItem(storageKey, fallback); setContractInput(fallback); setContractAddress(fallback); setLocalError('检测到当前地址不是 CoDropPass，已切换到项目配置的真实合约') }, [contractAddress, readError])
+  useEffect(() => { const address = connection.address?.toLowerCase(); if (!address) { setOrders([]); return }; try { setOrders(JSON.parse(localStorage.getItem(`${orderStoragePrefix}${address}`) || '[]') as DemoOrder[]) } catch { setOrders([]) } }, [connection.address])
+  useEffect(() => { if (!finalized || !pendingHash || handledHash.current === pendingHash) return; handledHash.current = pendingHash; releaseAction(); if (pendingAction === 'deploy' && receipt.data?.contractAddress) { const deployedAddress = parseAddress(receipt.data.contractAddress); localStorage.setItem(storageKey, deployedAddress); setContractAddress(deployedAddress); setContractInput(deployedAddress) }; if (pendingAction === 'buy') { setRecipientsInput(''); const address = connection.address?.toLowerCase(); const amount = typeof price.data === 'bigint' ? formatEther(price.data * BigInt(submittedRecipients.length)) : '—'; if (address) { const order: DemoOrder = { id: `TX-${pendingHash.slice(2, 8).toUpperCase()}`, title: selectedActivity.title, date: '刚刚', amount: `${amount} MON`, people: submittedRecipients.length, status: '已获得 Pass', note: `${submittedRecipients.length} 枚 Pass 已发送到名单地址` }; setOrders((current) => { const next = [order, ...current]; localStorage.setItem(`${orderStoragePrefix}${address}`, JSON.stringify(next)); return next }) } }; void refresh() }, [connection.address, finalized, pendingAction, pendingHash, price.data, receipt.data?.contractAddress, selectedActivity.title, submittedRecipients.length])
+  useEffect(() => { if (receipt.isError || receipt.data?.status === 'reverted') releaseAction() }, [receipt.data?.status, receipt.isError])
+  function beginAction(action: 'deploy' | 'buy' | 'organizer' | 'platform') { if (actionLock.current) { setLocalError('上一笔操作仍在处理中，请等待 MetaMask 返回结果'); return false }; actionLock.current = true; setPreparing(true); setPendingAction(action); setPendingHash(undefined); setLocalError('正在准备链上请求…'); return true }
+  function releaseAction() { actionLock.current = false; setPreparing(false) }
+  function requireWallet() { if (!connection.address) throw new Error('请先连接 MetaMask'); if (wrongChain) throw new Error('请先切换到 Monad Testnet'); if (!publicClient) throw new Error('RPC 暂时不可用'); return connection.address }
+  async function reconnectWallet() { if (!connectors[0] || connect.isPending || disconnect.isPending || walletConnectLock.current) return; walletConnectLock.current = true; setLocalError('正在请求 MetaMask 重新连接…'); try { await disconnect.mutateAsync(); const result = await connect.mutateAsync({ connector: connectors[0] }); if (contractAddress) { await refresh() }; setLocalError(`已重新连接 ${short(result.accounts?.[0] || connection.address)}`) } catch (error) { const message = errorMessage(error); setLocalError(message.includes('already pending') || message.includes('-32002') ? 'MetaMask 已有连接请求，请打开钱包完成或关闭当前请求' : `连接失败：${message}`) } finally { walletConnectLock.current = false } }
+  async function connectWallet() { if (!connectors[0] || connect.isPending || walletConnectLock.current) return; walletConnectLock.current = true; setLocalError('正在请求 MetaMask 连接…'); try { const result = await connect.mutateAsync({ connector: connectors[0] }); setLocalError(`已连接 ${short(result.accounts?.[0])}`) } catch (error) { const message = errorMessage(error); setLocalError(message.includes('already pending') || message.includes('-32002') ? 'MetaMask 已有连接请求，请打开钱包完成或关闭当前请求' : `连接失败：${message}`) } finally { walletConnectLock.current = false } }
+  async function handleDeploy(event: FormEvent) { event.preventDefault(); if (!beginAction('deploy')) return; try { const account = requireWallet(); const organizerAddress = parseAddress(organizerInput); const platformAddress = parseAddress(platformInput); if (organizerAddress === platformAddress) throw new Error('主办方和平台必须使用不同地址'); if (!metadataInput.startsWith('https://')) throw new Error('Metadata 必须使用 HTTPS 地址'); const args = [parseEther('0.01'), 1000n, organizerAddress, platformAddress, metadataInput] as const; const estimate = await publicClient!.estimateGas({ account, data: encodeDeployData({ abi, bytecode, args }) }); const hash = await deploy.mutateAsync({ abi, bytecode, args, chainId: monadTestnet.id, gas: estimate + estimate / 10n }); handledHash.current = undefined; setPreparing(false); setPendingHash(hash) } catch (error) { setLocalError(errorMessage(error)); releaseAction() } }
+  async function handleUseContract(event: FormEvent) { event.preventDefault(); setLocalError(''); setContractReadState('loading'); try { const address = parseAddress(contractInput); if (!publicClient) throw new Error('RPC 暂时不可用'); const bytecode = await publicClient.getBytecode({ address }); if (!bytecode || bytecode === '0x') throw new Error('该地址没有可读取的合约代码'); await publicClient.readContract({ address, abi, functionName: 'price' }); await publicClient.readContract({ address, abi, functionName: 'remainingSupply' }); localStorage.setItem(storageKey, address); setContractAddress(address); setContractReadState('success'); setLocalError(`已读取 CoDropPass 合约 ${short(address)}，正在刷新链上数据`) } catch (error) { setContractReadState('error'); setLocalError(`合约校验失败：${errorMessage(error)}`) } }
+  function goToReview(event: FormEvent) { event.preventDefault(); setLocalError(''); try { parseRecipients(recipientsInput); setSignupStep(2) } catch (error) { setLocalError(errorMessage(error)) } }
+  function removeRecipient(address: Address) { setRecipientsInput(parsedPreview.filter((item) => item !== address).join('\n')); setLocalError('') }
+  async function handleBuy(event: FormEvent) { event.preventDefault(); if (!beginAction('buy')) return; try { const account = requireWallet(); if (!contractAddress) throw new Error('合约地址未配置'); const recipients = parseRecipients(recipientsInput); setLocalError('正在读取最新价格和库存…'); const livePrice = typeof price.data === 'bigint' ? price.data : await publicClient!.readContract({ address: contractAddress, abi, functionName: 'price' }) as bigint; const liveRemaining = typeof remaining.data === 'bigint' ? remaining.data : await publicClient!.readContract({ address: contractAddress, abi, functionName: 'remainingSupply' }) as bigint; if (BigInt(recipients.length) > liveRemaining) throw new Error('剩余库存不足，整单不会成交'); const value = livePrice * BigInt(recipients.length); const request = { address: contractAddress, abi, functionName: 'buy', args: [recipients], value, account } as const; setLocalError('正在模拟合约调用…'); await publicClient!.simulateContract(request); setLocalError('正在估算 Gas 并请求 MetaMask…'); const estimate = await publicClient!.estimateContractGas(request); const hash = await write.mutateAsync({ address: contractAddress, abi, functionName: 'buy', args: [recipients], value, chainId: monadTestnet.id, gas: estimate + estimate / 10n }); handledHash.current = undefined; setSubmittedRecipients(recipients); setPreparing(false); setLocalError('已发送到 MetaMask，请确认交易'); setPendingHash(hash) } catch (error) { setLocalError(errorMessage(error)); releaseAction() } }
+  async function handleWithdraw(kind: 'organizer' | 'platform') { if (!beginAction(kind)) return; try { const account = requireWallet(); if (!contractAddress) throw new Error('合约地址未配置'); const functionName = kind === 'organizer' ? 'withdrawOrganizer' : 'withdrawPlatform'; const request = { address: contractAddress, abi, functionName, account } as const; await publicClient!.simulateContract(request); const estimate = await publicClient!.estimateContractGas(request); const hash = await write.mutateAsync({ address: contractAddress, abi, functionName, chainId: monadTestnet.id, gas: estimate + estimate / 10n }); handledHash.current = undefined; setPreparing(false); setPendingHash(hash) } catch (error) { setLocalError(errorMessage(error)); releaseAction() } }
+  const waitingForWallet = !pendingHash && (deploy.isPending || write.isPending); const transactionState = preparing ? '正在准备交易' : waitingForWallet ? '等待 MetaMask 确认' : !pendingHash ? '待提交' : receipt.isError || receipt.data?.status === 'reverted' ? '失败' : finalized ? '成功（已 finalized）' : '链上处理中'
 
-  const [contractAddress, setContractAddress] = useState<Address | undefined>(storedContract)
-  const [contractInput, setContractInput] = useState(() => storedContract() || '')
-  const [organizerInput, setOrganizerInput] = useState('')
-  const [platformInput, setPlatformInput] = useState('')
-  const [metadataInput, setMetadataInput] = useState('https://zhongjef.github.io/FairDrop/pass.json')
-  const [recipientsInput, setRecipientsInput] = useState('')
-  const [submittedRecipients, setSubmittedRecipients] = useState<Address[]>([])
-  const [pendingHash, setPendingHash] = useState<Hex>()
-  const [pendingAction, setPendingAction] = useState<'deploy' | 'buy' | 'organizer' | 'platform'>()
-  const [localError, setLocalError] = useState('')
-  const handledHash = useRef<Hex | undefined>(undefined)
-  const actionLock = useRef(false)
-  const [preparing, setPreparing] = useState(false)
-
-  const enabled = Boolean(contractAddress)
-  const contract = { address: contractAddress, abi, chainId: monadTestnet.id } as const
-  const price = useReadContract({ ...contract, functionName: 'price', query: { enabled } })
-  const maxSupply = useReadContract({ ...contract, functionName: 'maxSupply', query: { enabled } })
-  const sold = useReadContract({ ...contract, functionName: 'sold', query: { enabled } })
-  const remaining = useReadContract({ ...contract, functionName: 'remainingSupply', query: { enabled } })
-  const organizer = useReadContract({ ...contract, functionName: 'organizer', query: { enabled } })
-  const platform = useReadContract({ ...contract, functionName: 'platform', query: { enabled } })
-  const organizerPending = useReadContract({ ...contract, functionName: 'organizerPending', query: { enabled } })
-  const platformPending = useReadContract({ ...contract, functionName: 'platformPending', query: { enabled } })
-  const walletPasses = useReadContract({
-    ...contract,
-    functionName: 'balanceOf',
-    args: [connection.address || zeroAddress],
-    query: { enabled: enabled && Boolean(connection.address) },
-  })
-
-  const receipt = useWaitForTransactionReceipt({
-    hash: pendingHash,
-    chainId: monadTestnet.id,
-    query: { enabled: Boolean(pendingHash) },
-  })
-  const finalizedBlock = useBlock({
-    chainId: monadTestnet.id,
-    blockTag: 'finalized',
-    watch: true,
-    query: { enabled: Boolean(receipt.data) },
-  })
-  const finalized = Boolean(
-    receipt.data?.status === 'success'
-      && receipt.data.transactionHash === pendingHash
-      && finalizedBlock.data?.number !== undefined
-      && finalizedBlock.data.number >= receipt.data.blockNumber,
-  )
-
-  const parsedPreview = useMemo(() => {
-    try {
-      return parseRecipients(recipientsInput)
-    } catch {
-      return []
-    }
-  }, [recipientsInput])
-  const total = typeof price.data === 'bigint' ? price.data * BigInt(parsedPreview.length) : 0n
-  const wrongChain = connection.status === 'connected' && connection.chainId !== monadTestnet.id
-  const busy = preparing || deploy.isPending || write.isPending || Boolean(pendingHash && !finalized && !receipt.isError)
-  const soldOut = remaining.data === 0n
-  const canBuy = connection.status === 'connected'
-    && !wrongChain
-    && !busy
-    && parsedPreview.length > 0
-    && typeof remaining.data === 'bigint'
-    && BigInt(parsedPreview.length) <= remaining.data
-  const readError = [price, maxSupply, sold, remaining, organizer, platform, organizerPending, platformPending]
-    .find((query) => query.error)?.error
-
-  async function refresh() {
-    await Promise.all([
-      price.refetch(), maxSupply.refetch(), sold.refetch(), remaining.refetch(), organizer.refetch(),
-      platform.refetch(), organizerPending.refetch(), platformPending.refetch(), walletPasses.refetch(),
-    ])
-  }
-
-  useEffect(() => {
-    if (!finalized || !pendingHash || handledHash.current === pendingHash) return
-    handledHash.current = pendingHash
-    releaseAction()
-    if (pendingAction === 'deploy' && receipt.data?.contractAddress) {
-      const deployedAddress = parseAddress(receipt.data.contractAddress)
-      localStorage.setItem(storageKey, deployedAddress)
-      setContractAddress(deployedAddress)
-      setContractInput(deployedAddress)
-    }
-    if (pendingAction === 'buy') setRecipientsInput('')
-    void refresh()
-  }, [finalized, pendingAction, pendingHash, receipt.data?.contractAddress])
-
-  useEffect(() => {
-    if (receipt.isError || receipt.data?.status === 'reverted') releaseAction()
-  }, [receipt.data?.status, receipt.isError])
-
-  function beginAction(action: 'deploy' | 'buy' | 'organizer' | 'platform') {
-    if (actionLock.current) return false
-    actionLock.current = true
-    setPreparing(true)
-    setPendingAction(action)
-    setPendingHash(undefined)
-    setLocalError('')
-    return true
-  }
-
-  function releaseAction() {
-    actionLock.current = false
-    setPreparing(false)
-  }
-
-  function requireWallet() {
-    if (!connection.address) throw new Error('请先连接 MetaMask')
-    if (wrongChain) throw new Error('请先切换到 Monad Testnet')
-    if (!publicClient) throw new Error('RPC 暂时不可用')
-    return connection.address
-  }
-
-  async function handleDeploy(event: FormEvent) {
-    event.preventDefault()
-    if (!beginAction('deploy')) return
-    try {
-      const account = requireWallet()
-      const organizerAddress = parseAddress(organizerInput)
-      const platformAddress = parseAddress(platformInput)
-      if (organizerAddress === platformAddress) throw new Error('主办方和平台必须使用不同地址')
-      if (!metadataInput.startsWith('https://')) throw new Error('Metadata 必须使用 HTTPS 地址')
-      const args = [parseEther('0.01'), 1000n, organizerAddress, platformAddress, metadataInput] as const
-      const estimate = await publicClient!.estimateGas({ account, data: encodeDeployData({ abi, bytecode, args }) })
-      const hash = await deploy.mutateAsync({ abi, bytecode, args, chainId: monadTestnet.id, gas: estimate + estimate / 10n })
-      handledHash.current = undefined
-      setPreparing(false)
-      setPendingHash(hash)
-    } catch (error) {
-      setLocalError(errorMessage(error))
-      releaseAction()
-    }
-  }
-
-  function handleUseContract(event: FormEvent) {
-    event.preventDefault()
-    setLocalError('')
-    try {
-      const address = parseAddress(contractInput)
-      localStorage.setItem(storageKey, address)
-      setContractAddress(address)
-    } catch (error) {
-      setLocalError(errorMessage(error))
-    }
-  }
-
-  async function handleBuy(event: FormEvent) {
-    event.preventDefault()
-    if (!beginAction('buy')) return
-    try {
-      const account = requireWallet()
-      if (!contractAddress || typeof price.data !== 'bigint') throw new Error('合约数据尚未加载')
-      const recipients = parseRecipients(recipientsInput)
-      if (typeof remaining.data === 'bigint' && BigInt(recipients.length) > remaining.data) {
-        throw new Error('剩余库存不足，整单不会成交')
-      }
-      const value = price.data * BigInt(recipients.length)
-      const request = { address: contractAddress, abi, functionName: 'buy', args: [recipients], value, account } as const
-      await publicClient!.simulateContract(request)
-      const estimate = await publicClient!.estimateContractGas(request)
-      const hash = await write.mutateAsync({
-        address: contractAddress, abi, functionName: 'buy', args: [recipients], value,
-        chainId: monadTestnet.id, gas: estimate + estimate / 10n,
-      })
-      handledHash.current = undefined
-      setSubmittedRecipients(recipients)
-      setPreparing(false)
-      setPendingHash(hash)
-    } catch (error) {
-      setLocalError(errorMessage(error))
-      releaseAction()
-    }
-  }
-
-  async function handleWithdraw(kind: 'organizer' | 'platform') {
-    if (!beginAction(kind)) return
-    try {
-      const account = requireWallet()
-      if (!contractAddress) throw new Error('合约地址未配置')
-      const functionName = kind === 'organizer' ? 'withdrawOrganizer' : 'withdrawPlatform'
-      const request = { address: contractAddress, abi, functionName, account } as const
-      await publicClient!.simulateContract(request)
-      const estimate = await publicClient!.estimateContractGas(request)
-      const hash = await write.mutateAsync({
-        address: contractAddress, abi, functionName, chainId: monadTestnet.id,
-        gas: estimate + estimate / 10n,
-      })
-      handledHash.current = undefined
-      setPreparing(false)
-      setPendingHash(hash)
-    } catch (error) {
-      setLocalError(errorMessage(error))
-      releaseAction()
-    }
-  }
-
-  const waitingForWallet = !pendingHash && (deploy.isPending || write.isPending)
-  const transactionState = preparing
-    ? '正在准备交易'
-    : waitingForWallet
-      ? '等待 MetaMask 确认'
-    : !pendingHash
-    ? '待提交'
-    : receipt.isError || receipt.data?.status === 'reverted'
-      ? '失败'
-      : finalized
-        ? '成功（已 finalized）'
-        : '链上处理中'
-
-  return (
-    <div className="page-shell">
-      <header className="topbar">
-        <a className="brand" href="./">
-          <span className="brand-mark">+</span>
-          <span>CoDrop<small>一起买</small></span>
-        </a>
-        <span className="network"><i /> Monad Testnet <b>测试资产</b></span>
-        {connection.status === 'connected' ? (
-          <button className="wallet" onClick={() => disconnect.mutate()}>{short(connection.address)} · 断开</button>
-        ) : (
-          <button className="wallet" disabled={!connectors[0] || connect.isPending} onClick={() => connect.mutate({ connector: connectors[0] })}>
-            {connect.isPending ? '连接中…' : '连接 MetaMask'}
-          </button>
-        )}
-      </header>
-
-      <main>
-        <section className="hero">
-          <div className="hero-copy">
-            <p className="eyebrow">MONAD RELAY · MOCK GAME</p>
-            <h1>组好一队，<br />链上开局。</h1>
-            <p className="lede">模拟小游戏「Monad Relay」需要 1–5 人组队入场。队长一次付款，把 Pass 直接发到每位队友的钱包。</p>
-            <div className="hero-tags" aria-label="产品特点">
-              <span>最多 5 人</span><span>整队原子成交</span><span>链上可验证</span>
-            </div>
-          </div>
-          <div className="pass-visual">
-            <img src="./codrop-editorial-hero.png" alt="蓝橙双色印刷的 CoDrop 一起买海报" />
-            <span>ISSUE 001 · ONCHAIN</span>
-          </div>
-        </section>
-
-        <section className="game-brief" aria-label="Monad Relay 游戏说明">
-          <div><span>本轮任务</span><strong>组队夺回能量核心</strong></div>
-          <div><span>测试入场价</span><strong>{typeof price.data === 'bigint' ? formatEther(price.data) : '0.01'} MON / 人</strong></div>
-          <div><span>平台服务费</span><strong>成交额的 1%</strong></div>
-        </section>
-
-        {wrongChain && (
-          <div className="notice warning">当前钱包网络不正确。<button onClick={() => switchChain.mutate({ chainId: monadTestnet.id })}>切换到 Monad Testnet</button></div>
-        )}
-
-        {!contractAddress ? (
-          <section className="grid deploy-grid">
-            <article className="card">
-              <p className="step">已有合约</p>
-              <h2>连接测试网部署</h2>
-              <form onSubmit={handleUseContract}>
-                <label htmlFor="contract">CoDropPass 地址</label>
-                <input id="contract" value={contractInput} onChange={(event) => setContractInput(event.target.value)} placeholder="0x…" />
-                <button type="submit">读取合约</button>
-                <button className="secondary" type="button" onClick={() => setContractAddress(storedContract())}>返回当前合约</button>
-              </form>
-            </article>
-
-            <article className="card accent-card">
-              <p className="step">首次部署</p>
-              <h2>创建 1000 张测试 Pass</h2>
-              <p>测试单价 0.01 MON、平台费 1%。部署会触发一笔 MetaMask 交易。</p>
-              <form onSubmit={handleDeploy}>
-                <label htmlFor="organizer">主办方地址</label>
-                <input id="organizer" value={organizerInput} onChange={(event) => setOrganizerInput(event.target.value)} placeholder="Account 2 · 0x…" />
-                <label htmlFor="platform">平台地址</label>
-                <input id="platform" value={platformInput} onChange={(event) => setPlatformInput(event.target.value)} placeholder="Account 3 · 0x…" />
-                <label htmlFor="metadata">Metadata URL</label>
-                <input id="metadata" value={metadataInput} onChange={(event) => setMetadataInput(event.target.value)} />
-                <button type="submit" disabled={busy || wrongChain || connection.status !== 'connected'}>
-                  {preparing && pendingAction === 'deploy' ? '正在准备交易…' : deploy.isPending ? '等待钱包确认…' : '部署 CoDropPass'}
-                </button>
-              </form>
-            </article>
-          </section>
-        ) : (
-          <>
-            <section className="metrics" aria-label="链上数据">
-              <div><span>每人入场价</span><strong>{typeof price.data === 'bigint' ? `${formatEther(price.data)} MON` : '—'}</strong></div>
-              <div><span>剩余名额</span><strong>{typeof remaining.data === 'bigint' ? `${remaining.data} / ${String(maxSupply.data ?? '—')}` : '—'}</strong></div>
-              <div><span>已售 Pass</span><strong>{String(sold.data ?? '—')}</strong></div>
-              <div><span>我的持有</span><strong>{String(walletPasses.data ?? '—')}</strong></div>
-            </section>
-
-            <div className="inventory-line" aria-label="库存进度">
-              <span style={{ width: typeof sold.data === 'bigint' && typeof maxSupply.data === 'bigint' ? `${Number(sold.data * 100n / maxSupply.data)}%` : '0%' }} />
-            </div>
-
-            <section className="grid">
-              <article className="card purchase-card">
-                <div className="section-heading">
-                  <div><p className="step">组队入场</p><h2>把队友加入名单</h2></div>
-                  <span className="number-badge">01</span>
-                </div>
-                {pendingAction === 'buy' && pendingHash && (
-                  <div className={`purchase-result ${finalized ? 'confirmed' : receipt.isError || receipt.data?.status === 'reverted' ? 'rejected' : ''}`} role="status">
-                    <span>{finalized ? 'PURCHASE CONFIRMED' : receipt.isError || receipt.data?.status === 'reverted' ? 'PURCHASE FAILED' : 'TRANSACTION PENDING'}</span>
-                    <strong>{finalized ? '购买成功' : receipt.isError || receipt.data?.status === 'reverted' ? '购买失败' : '链上确认中'}</strong>
-                    <p>{finalized ? `已向 ${submittedRecipients.length || parsedPreview.length} 个地址发出 Pass。` : '请等待交易完成，不要重复提交。'}</p>
-                    <a href={`${explorer}/tx/${pendingHash}`} target="_blank" rel="noreferrer">查看交易回执 →</a>
-                  </div>
-                )}
-                <form onSubmit={handleBuy}>
-                  <label htmlFor="recipients">钱包地址，每行一个</label>
-                  <textarea id="recipients" rows={7} value={recipientsInput} onChange={(event) => setRecipientsInput(event.target.value)} placeholder={'0x…\n0x…\n0x…'} />
-                  {parsedPreview.length > 0 && (
-                    <div className="recipient-preview">
-                      {parsedPreview.map((address, index) => <span key={address}>{index + 1}. {short(address)}</span>)}
-                    </div>
-                  )}
-                  <div className="order-total"><span>{parsedPreview.length} 人</span><strong>{formatEther(total)} MON</strong></div>
-                  <button type="submit" disabled={!canBuy}>
-                    {soldOut
-                      ? '本场已售罄'
-                      : connection.status !== 'connected'
-                        ? '请先连接 MetaMask'
-                        : wrongChain
-                          ? '请切换到 Monad Testnet'
-                          : recipientsInput.trim() && parsedPreview.length === 0
-                            ? '地址格式有误'
-                            : parsedPreview.length === 0
-                              ? '请填写接收地址'
-                              : preparing && pendingAction === 'buy'
-                                ? '正在准备交易…'
-                                : write.isPending && pendingAction === 'buy'
-                                  ? '请在 MetaMask 确认'
-                              : busy
-                                ? '链上处理中…'
-                                : '确认名单并购买'}
-                  </button>
-                  <small>交易成功后不可撤销，请付款前核对完整名单。</small>
-                </form>
-              </article>
-
-              <article className="card">
-                <div className="section-heading">
-                  <div><p className="step">链上结算</p><h2>收入分配</h2></div>
-                  <span className="number-badge">02</span>
-                </div>
-                <div className="income-row">
-                  <div><span><b>99%</b> 主办方<br />{short(organizer.data as string | undefined)}</span><strong>{typeof organizerPending.data === 'bigint' ? formatEther(organizerPending.data) : '—'} MON</strong></div>
-                  {connection.address?.toLowerCase() === String(organizer.data).toLowerCase() && <button disabled={busy || organizerPending.data === 0n} onClick={() => handleWithdraw('organizer')}>提取主办方收入</button>}
-                </div>
-                <div className="income-row">
-                  <div><span><b>1%</b> 平台<br />{short(platform.data as string | undefined)}</span><strong>{typeof platformPending.data === 'bigint' ? formatEther(platformPending.data) : '—'} MON</strong></div>
-                  {connection.address?.toLowerCase() === String(platform.data).toLowerCase() && <button disabled={busy || platformPending.data === 0n} onClick={() => handleWithdraw('platform')}>提取平台收入</button>}
-                </div>
-                <button className="secondary" onClick={() => void refresh()}>刷新链上数据</button>
-              </article>
-            </section>
-
-            <section className="contract-bar">
-              <span>合约 {short(contractAddress)}</span>
-              <a href={`${explorer}/address/${contractAddress}`} target="_blank" rel="noreferrer">在 MonadVision 查看</a>
-              <button onClick={() => { setContractInput(contractAddress); setContractAddress(undefined) }}>更换合约</button>
-            </section>
-          </>
-        )}
-
-        <section className={`status ${finalized ? 'success' : receipt.isError ? 'failed' : ''}`} aria-live="polite">
-          <i /><span>交易状态</span><strong>{transactionState}</strong>
-          {pendingHash && <a href={`${explorer}/tx/${pendingHash}`} target="_blank" rel="noreferrer">查看交易 {short(pendingHash)}</a>}
-          {(localError || readError) && <p className="error">{localError || `暂时无法确认：${errorMessage(readError)}`}</p>}
-        </section>
-      </main>
-    </div>
-  )
+  return <div className="page-shell"><header className="topbar"><a className="brand" href="./"><span className="brand-mark">+</span><span>FairDrop<small>公平分配基础设施</small></span></a><nav className="topnav" aria-label="身份与视图"><div className="role-switch"><button className={roleMode === 'user' ? 'active' : ''} onClick={() => { setRoleMode('user'); setView('market') }}>用户端</button><button className={roleMode === 'platform' ? 'active' : ''} onClick={() => { setRoleMode('platform'); setView('studio') }}>平台端</button></div>{roleMode === 'user' && <div className="view-links"><button className={view === 'market' ? 'active' : ''} onClick={() => setView('market')}>活动市场</button><button className={view === 'orders' ? 'active' : ''} onClick={() => setView('orders')}>我的订单</button></div>}{roleMode === 'platform' && <span className="platform-context">合约与结算</span>}</nav><span className="network"><i /> Monad Testnet <b>测试资产</b></span>{connection.status === 'connected' ? <button className="wallet" onClick={() => disconnect.mutate()}>{short(connection.address)} · 断开</button> : <button className="wallet" disabled={!connectors[0] || connect.isPending} onClick={() => void connectWallet()}>{connect.isPending ? '连接中…' : '连接 MetaMask'}</button>}</header><main><section className="demo-strip"><span className="live-dot" /><strong>{demoMode ? 'BROWSE MODE' : 'LIVE CONTRACT'}</strong><span>{demoMode ? '用户端可先浏览活动；真实报名需要连接钱包并读取合约' : '已读取 Monad 合约数据'}</span><span className="strip-rule" /><span>{view === 'studio' ? '平台端 · 结算与合约管理' : '用户端 · 活动与订单'}</span></section>{wrongChain && <div className="notice warning">当前钱包网络不正确。<button onClick={() => switchChain.mutate({ chainId: monadTestnet.id })}>切换到 Monad Testnet</button></div>}
+  {view === 'market' && <><section className="market-hero"><div><p className="eyebrow">LIMITED PASS · CONDITIONAL SETTLEMENT</p><h1>一起报名，<br /><em>整组兑现。</em></h1><p className="lede">FairDrop 为 Monad 上的游戏、社区与活动提供限量 Pass 发售。提交同行成员和场次偏好，满足条件才成交，未分配本金原路可退。</p><div className="hero-tags"><span>固定库存</span><span>公开规则</span><span>链上结算</span></div></div><div className="hero-visual"><img src="./codrop-editorial-hero.png" alt="FairDrop 活动 Pass 视觉" /><div className="hero-visual-label">2 wallets <b>→</b> 2 Pass</div><div className="hero-visual-caption">整组满足条件<br />同笔直发</div></div></section><section className="section-intro"><div><p className="step">01 / 正在进行</p><h2>选择一场你愿意兑现的体验</h2></div><span className="section-count">{activities.length} 个活动</span></section><section className="activity-grid">{activities.map((activity, index) => <button key={activity.id} className={`activity-card ${activity.accent} ${selectedActivity.id === activity.id ? 'selected' : ''}`} onClick={() => setSelectedActivity(activity)}><div className="activity-top"><span className="activity-index">/{String(index + 1).padStart(2, '0')}</span><span className="status-chip">报名中</span></div><h3>{activity.title}</h3><p className="activity-project">{activity.project} · {activity.type}</p><div className="activity-meta"><span>{activity.date}</span><strong>{livePriceLabel || activity.price}</strong></div><div className="mini-progress"><span style={{ width: `${(activity.sold / activity.capacity) * 100}%` }} /></div><div className="activity-bottom"><span>{activity.sold} / {activity.capacity} 已锁定</span><span>查看详情 ↗</span></div></button>)}</section><section className="detail-layout"><article className="detail-copy"><div className="section-heading"><div><p className="step">02 / 当前活动</p><h2>{selectedActivity.title}</h2></div><span className="status-chip large">{demoMode ? '浏览模式' : '链上活动'}</span></div><p>{selectedActivity.description}</p><div className="detail-tags">{selectedActivity.tags.map((tag) => <span key={tag}>{tag}</span>)}</div><div className="detail-facts"><div><span>已锁定</span><strong>{selectedActivity.sold}</strong><small>张 Pass</small></div><div><span>剩余名额</span><strong>{selectedActivity.capacity - selectedActivity.sold}</strong><small>整组优先</small></div><div><span>成功费率</span><strong>1%</strong><small>仅对成交收取</small></div></div><div className="large-progress"><div><span>报名进度</span><b>{demoProgress}%</b></div><span><i style={{ width: `${demoProgress}%` }} /></span></div></article><article className="signup-panel"><div className="panel-kicker"><span>真实链上报名</span><span>Step {signupStep} / 2</span></div><div className="segmented"><button type="button" className={signupMode === '条件报名' ? 'active' : ''} onClick={() => { setSignupMode('条件报名'); setSignupStep(1) }}>条件报名</button><button type="button" className={signupMode === '直接购买' ? 'active' : ''} onClick={() => { setSignupMode('直接购买'); setSignupStep(1) }}>直接购买</button></div><p className="mode-note">{signupMode === '条件报名' && selectedActivity.hasBackup ? '记录同行成员与备选偏好；当前合约仍按固定库存和名单数量立即成交。' : signupMode === '条件报名' ? '该活动仅有单场，条件报名会按当前场次立即成交。' : '跳过场次偏好，只按当前活动和名单数量立即购买。'}</p><form onSubmit={signupStep === 1 ? goToReview : handleBuy}><label htmlFor="recipients">同行成员钱包地址（最多 5 个）</label><textarea id="recipients" rows={4} value={recipientsInput} onChange={(event) => setRecipientsInput(event.target.value)} placeholder={'每行一个地址\n0x…\n0x…'} />{connection.address && <button type="button" className="secondary add-wallet" onClick={() => setRecipientsInput((current) => current.trim() ? `${current.trim()}\n${connection.address}` : connection.address || '')}>添加当前钱包地址</button>}{parsedPreview.length > 0 && <div className="recipient-tags" aria-label="已识别的接收地址">{parsedPreview.map((address, index) => <span className="recipient-tag" key={address}><b>{index + 1}</b><code>{short(address)}</code><button type="button" aria-label={`删除 ${short(address)}`} onClick={() => removeRecipient(address)}>×</button></span>)}</div>}{signupStep === 2 && <div className="review-box"><strong>订单核对</strong><span>{parsedPreview.length} 个接收地址 · {typeof price.data === 'bigint' ? formatEther(total) : '—'} MON</span><small>同一笔交易会按名单顺序发放 Pass；地址不会被合并。</small></div>}{selectedActivity.hasBackup && signupMode === '条件报名' && <div className="choice-row"><label className="check-label"><input type="checkbox" checked={acceptBackup} onChange={(event) => setAcceptBackup(event.target.checked)} /> 接受 B 场备选</label><span className="choice-note">整组不可拆分</span></div>}<div className="order-total"><span>{parsedPreview.length || 2} 人 · {typeof price.data === 'bigint' ? formatEther(price.data) : '—'} MON / 张</span><strong>{typeof price.data === 'bigint' && parsedPreview.length > 0 ? formatEther(total) : '—'} MON</strong></div><button type="submit" disabled={signupStep === 1 ? parsedPreview.length === 0 : !canBuy}>{signupStep === 1 ? '继续核对订单' : connection.status !== 'connected' ? '连接钱包后真实报名' : wrongChain ? '请切换到 Monad Testnet' : soldOut ? '本场已售罄' : busy ? '链上处理中…' : signupMode === '条件报名' ? '确认名单并发起真实交易' : '确认名单并发起真实购买'}</button>{signupStep === 2 && <button type="button" className="secondary" onClick={() => setSignupStep(1)}>返回修改地址</button>}<small>真实 Monad Testnet 交易会把同一笔支付按名单铸造给多个地址。</small></form></article></section></>}
+  {view === 'orders' && <section className="orders-view"><div className="view-heading"><div><p className="eyebrow">YOUR ACTIVITY</p><h1>我的订单</h1><p>每一笔报名都拥有明确的资金状态与下一步动作。</p></div><div className="order-summary"><strong>{orders.length}</strong><span>笔报名</span></div></div><div className="filter-row">{(['全部', '待分配', '已获得 Pass', '可退款'] as const).map((filter) => <button key={filter} className={orderFilter === filter ? 'active' : ''} onClick={() => setOrderFilter(filter)}>{filter}</button>)}</div>{focusedOrderId && <div className="focused-order" role="status">正在查看订单 <strong>{focusedOrderId}</strong><button onClick={() => setFocusedOrderId(undefined)}>关闭聚焦</button></div>}<div className="order-list">{visibleOrders.map((order) => <article className={`order-row ${focusedOrderId === order.id ? 'focused' : ''}`} key={order.id} id={`order-${order.id}`}><div className="order-code">{order.id}<small>{order.date}</small></div><div className="order-main"><strong>{order.title}</strong><span>{order.people} 人 · {order.amount} · {order.note}</span></div><span className={`order-status ${order.status === '可退款' ? 'refund' : order.status === '已获得 Pass' ? 'success' : 'pending'}`}>{order.status}</span><button className="row-action" onClick={() => { if (order.status === '可退款') setOrders((current) => current.filter((item) => item.id !== order.id)); else { setFocusedOrderId(order.id); setView('orders') } }}>{order.status === '可退款' ? '领取退款' : order.status === '已获得 Pass' ? '查看 Pass' : '查看进度'} ↗</button></article>)}</div><div className="ledger-note"><strong>资金账本</strong><span>本地已记录报名 <b>{orders.length} 笔</b></span><span>已完成交易 <b>{orders.filter((order) => order.status === '已获得 Pass').length} 笔</b></span><span>数据来自当前钱包</span></div></section>}
+  {view === 'studio' && !canAccessStudio && <section className="access-gate"><p className="eyebrow">ORGANIZER STUDIO</p><h1>连接<br /><em>平台账号。</em></h1><p>平台工作台只对合约中的主办方或平台地址开放。前端不能替你切换钱包账号，请在 MetaMask 账号选择器中选择对应地址后重新连接。</p><div className="role-check"><div><span>当前连接</span><strong>{short(connection.address)}</strong></div><div><span>合约主办方</span><strong>{short(organizerAddress)}</strong></div><div><span>合约平台</span><strong>{short(platformAddress)}</strong></div></div><div className="gate-actions"><button className="primary-ghost" onClick={() => void reconnectWallet()}>重新连接 MetaMask 账号</button><button className="secondary" onClick={() => setView('market')}>返回用户端</button></div></section>}
+  {view === 'studio' && contractAddress && !readError && <section className={`studio-view ${canAccessStudio ? '' : 'read-only'}`}><div className="view-heading"><div><p className="eyebrow">{canAccessStudio ? 'ORGANIZER STUDIO · VERIFIED' : 'ORGANIZER STUDIO · READ ONLY'}</p><h1>把库存变成<br /><em>可兑现的承诺。</em></h1><p>{canAccessStudio ? `已验证当前账号为${isOrganizer ? '主办方' : '平台'}。以下数字全部来自真实合约读取。` : '当前账号可查看真实合约数据，但不是 organizer 或 platform，提款按钮已禁用。'}</p></div><button className="primary-ghost" onClick={() => setView('market')}>预览用户端 ↗</button></div><div className="studio-metrics"><div><span>合约余额 / 托管参考</span><strong>{typeof contractBalance === 'bigint' ? formatEther(contractBalance) : '—'} <small>MON</small></strong><b>当前合约真实余额</b></div><div className="highlight"><span>已记账成交额</span><strong>{typeof settledAmount === 'bigint' ? formatEther(settledAmount) : '—'} <small>MON</small></strong><b>主办方 + 平台待提款</b></div><div><span>库存使用率</span><strong>{realSoldPercent === undefined ? '—' : realSoldPercent}<small>%</small></strong><b>{String(sold.data ?? '—')} / {String(maxSupply.data ?? '—')} 张</b></div><div><span>我的 Pass</span><strong>{String(walletPasses.data ?? '—')}</strong><b>当前账号持有量</b></div></div><div className="studio-grid"><article className="ledger-card"><div className="section-heading"><div><p className="step">资金分配</p><h2>每一笔收入去哪儿</h2></div><span className="number-badge">03</span></div><div className="split-bar"><span style={{ width: '99%' }} /><i style={{ width: '1%' }} /></div><div className="split-legend"><div><b>99%</b><span>项目方净收入</span><strong>{typeof organizerPending.data === 'bigint' ? `${formatEther(organizerPending.data)} MON` : '—'}</strong></div><div><b>1%</b><span>FairDrop 服务费</span><strong>{typeof platformPending.data === 'bigint' ? `${formatEther(platformPending.data)} MON` : '—'}</strong></div></div><div className="studio-actions"><button onClick={() => handleWithdraw('organizer')} disabled={busy || !isOrganizer || organizerPending.data === 0n}>提取主办方收入</button><button className="secondary" onClick={() => void refresh()}>刷新链上数据</button></div></article><article className="activity-health"><div className="section-heading"><div><p className="step">真实活动状态</p><h2>CoDropPass</h2></div><span className="status-chip">链上读取</span></div><div className="health-line"><span>库存使用率</span><b>{realSoldPercent === undefined ? '—' : `${realSoldPercent}%`}</b><i><em style={{ width: `${realSoldPercent ?? 0}%` }} /></i></div><div className="health-line"><span>主办方待提款</span><b>{typeof organizerPending.data === 'bigint' ? `${formatEther(organizerPending.data)} MON` : '—'}</b></div><div className="health-line"><span>平台待提款</span><b>{typeof platformPending.data === 'bigint' ? `${formatEther(platformPending.data)} MON` : '—'}</b></div><div className="contract-bar"><span>合约 {short(contractAddress)}</span><a href={`${explorer}/address/${contractAddress}`} target="_blank" rel="noreferrer">查看合约 ↗</a></div></article></div></section>}
+  {view === 'studio' && contractAddress && <section className="contract-bar global-contract"><span>当前合约 {short(contractAddress)}</span><a href={`${explorer}/address/${contractAddress}`} target="_blank" rel="noreferrer">在 MonadVision 查看</a><button onClick={() => { setContractInput(contractAddress); setContractAddress(undefined) }}>更换合约</button></section>}{view === 'studio' && !contractAddress && <section className="deploy-inline"><p className="step">平台端 / 合约管理</p><h2>读取真实活动合约</h2><form onSubmit={handleUseContract}><input value={contractInput} onChange={(event) => setContractInput(event.target.value)} placeholder="CoDropPass 合约地址 0x…" /><button type="submit">读取合约</button></form></section>}{(view !== 'studio' || pendingHash || localError || readError) && <section className={`status ${finalized ? 'success' : receipt.isError ? 'failed' : ''}`} aria-live="polite"><i /><span>交易状态</span><strong>{transactionState}</strong>{pendingHash && <a href={`${explorer}/tx/${pendingHash}`} target="_blank" rel="noreferrer">查看交易 {short(pendingHash)}</a>}{(localError || readError) && <p className="error">{localError || `暂时无法确认：${errorMessage(readError)}`}</p>}</section>}</main></div>
 }
