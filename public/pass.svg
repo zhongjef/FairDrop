@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-labelledby="title desc">
+  <title id="title">CoDrop First Light Pass</title>
+  <desc id="desc">A lime and black geometric event pass.</desc>
+  <rect width="1200" height="800" fill="#161a16"/>
+  <path d="M-80 760 590-20h210L130 820Z" fill="#dfff5a" opacity=".9"/>
+  <path d="m420 800 650-800h180L600 800Z" fill="#273022"/>
+  <circle cx="910" cy="168" r="180" fill="none" stroke="#dfff5a" stroke-width="2" opacity=".7"/>
+  <circle cx="910" cy="168" r="118" fill="none" stroke="#dfff5a" stroke-width="1" opacity=".45"/>
+  <text x="72" y="108" fill="#dfff5a" font-family="monospace" font-size="24" letter-spacing="5">CODROP / 001</text>
+  <text x="72" y="490" fill="#f4f1ea" font-family="sans-serif" font-size="100" font-weight="600" letter-spacing="-5">FIRST</text>
+  <text x="72" y="585" fill="#dfff5a" font-family="sans-serif" font-size="100" font-weight="600" letter-spacing="-5">LIGHT</text>
+  <text x="72" y="720" fill="#b7c293" font-family="monospace" font-size="20" letter-spacing="4">NEON COMMONS</text>
+</svg>
