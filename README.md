@@ -2,7 +2,7 @@
 
 ## 项目介绍
 
-大家好，我们是 CoDrop 小组，成员包括 Leila、Kiira 和 JZ。今天在黑客松现场，我们从 0 到 1 完成了 FairDrop。
+大家好，我们是 FairDrop 小组，成员包括 Leila、Kiira 和 JZ。今天在黑客松现场，我们从 0 到 1 完成了 FairDrop。
 
 FairDrop 基于 Monad 构建，是一套面向生态限量数字权益的链上发行与交付基础设施。游戏资格、活动名额和社区身份，都可以通过 Pass 完成发行、分配与验证。
 
