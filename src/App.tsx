@@ -20,9 +20,10 @@ const abi = artifact.abi as Abi
 const bytecode = artifact.bytecode as Hex
 const explorer = 'https://testnet.monadvision.com'
 const storageKey = 'codrop-contract-address'
+const demoContract = '0xb4fdc79f2540da2541fa74f4361b916b6b98c374' as Address
 
 function storedContract(): Address | undefined {
-  const candidate = import.meta.env.VITE_CONTRACT_ADDRESS || localStorage.getItem(storageKey)
+  const candidate = import.meta.env.VITE_CONTRACT_ADDRESS || localStorage.getItem(storageKey) || demoContract
   if (!candidate) return undefined
   try {
     return parseAddress(candidate)
@@ -71,7 +72,7 @@ export function App() {
   const write = useWriteContract()
 
   const [contractAddress, setContractAddress] = useState<Address | undefined>(storedContract)
-  const [contractInput, setContractInput] = useState('')
+  const [contractInput, setContractInput] = useState(() => storedContract() || '')
   const [organizerInput, setOrganizerInput] = useState('')
   const [platformInput, setPlatformInput] = useState('')
   const [metadataInput, setMetadataInput] = useState('https://zhongjef.github.io/FairDrop/pass.json')
@@ -328,6 +329,7 @@ export function App() {
                 <label htmlFor="contract">CoDropPass 地址</label>
                 <input id="contract" value={contractInput} onChange={(event) => setContractInput(event.target.value)} placeholder="0x…" />
                 <button type="submit">读取合约</button>
+                <button className="secondary" type="button" onClick={() => setContractAddress(storedContract())}>返回当前合约</button>
               </form>
             </article>
 
@@ -427,7 +429,7 @@ export function App() {
             <section className="contract-bar">
               <span>合约 {short(contractAddress)}</span>
               <a href={`${explorer}/address/${contractAddress}`} target="_blank" rel="noreferrer">在 MonadVision 查看</a>
-              <button onClick={() => { localStorage.removeItem(storageKey); setContractAddress(undefined) }}>更换合约</button>
+              <button onClick={() => { setContractInput(contractAddress); setContractAddress(undefined) }}>更换合约</button>
             </section>
           </>
         )}
