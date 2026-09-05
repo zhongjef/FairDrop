@@ -29,7 +29,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
         env:
-          VITE_CONTRACT_ADDRESS: 0xB4Fdc79F2540DA2541FA74F4361B916b6B98c374
+          VITE_CONTRACT_ADDRESS: '0xB4Fdc79F2540DA2541FA74F4361B916b6B98c374'
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
